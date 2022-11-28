@@ -10,7 +10,7 @@ import torch.nn as nn
 import numpy as np
 from tools.file_io import load_pickle_file
 from torch.nn.utils.rnn import pad_sequence
-from transformers import BertTokenizer
+# from transformers import BertTokenizer
 
 
 class WordTokenizer(nn.Module):

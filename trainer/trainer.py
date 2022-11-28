@@ -13,7 +13,7 @@ import time
 import sys
 from loguru import logger
 import argparse
-from keywords import compute_keywords
+# from keywords import compute_keywords
 from models.Tokenizer import WordTokenizer
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -112,7 +112,7 @@ def train(config):
     # get keywords for training set
     if config.keywords is True:
         num_keywords = config.num_keywords
-        train_keywords_dict = load_pickle_file('data/Clotho/pickles/456/train_keywords_dict_pred_{}.p'.format(num_keywords))
+        train_keywords_dict = load_pickle_file('data/Clotho/pickles/456/train_keywords_dict_metadata.p')  # _pred_{}.p'.format(num_keywords))
         train_size = len(train_loader.dataset)
         keywords_list = np.zeros((int(train_size / 5), num_keywords))
         for i in range(0, train_size, 5):
@@ -126,7 +126,7 @@ def train(config):
             keywords_list[int(i/5)] = keywords_index
 
         # val_keywords, test_keywords = compute_keywords(config, train_loader, val_loader, test_loader, keywords_list)
-        val_keywords_dict = load_pickle_file('data/Clotho/pickles/456/val_keywords_dict_pred_{}.p'.format(num_keywords))
+        val_keywords_dict = load_pickle_file('data/Clotho/pickles/456/val_keywords_dict_metadata.p')  # _pred_{}.p'.format(num_keywords))
         val_size = len(val_loader.dataset)
         val_keywords = np.zeros((val_size, num_keywords))
         for i in range(val_size):
@@ -137,7 +137,7 @@ def train(config):
                 keywords_index.append(keywords_index[-1])
             val_keywords[i] = keywords_index
 
-        test_keywords_dict = load_pickle_file('data/Clotho/pickles/456/test_keywords_dict_pred_{}.p'.format(num_keywords))
+        test_keywords_dict = load_pickle_file('data/Clotho/pickles/456/test_keywords_dict_metadata.p')  # _pred_{}.p'.format(num_keywords))
         test_size = len(test_loader.dataset)
         test_keywords = np.zeros((test_size, num_keywords))
         for i in range(test_size):
@@ -168,7 +168,7 @@ def train(config):
         checkpoint = torch.load(config.path.resume_model)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        ep = checkpoint['epoch']
+        ep = checkpoint['epoch'] + 1
 
     # training loop
     spiders = []
@@ -223,24 +223,24 @@ def train(config):
         # validation loop, validation after each epoch
         main_logger.info("Validating...")
 
-        for i in range(1, 4):
+        for i in range(1, 2):  # , 4):
             spider = validate(val_loader, model, beam_size=i, sos_ind=sos_ind,
                               eos_ind=eos_ind, vocabulary=vocabulary, log_dir=log_output_dir,
                               epoch=epoch, device=device, is_keyword=config.keywords,
                               keywords_list=val_keywords)['spider']['score']
-            if i != 1:
+            if i == 1:  # != 1
                 spiders.append(spider)
-                if spider >= max(spiders):
+                if spider:  #  >= max(spiders)
                     torch.save({
                         "model": model.state_dict(),
                         "optimizer": optimizer.state_dict(),
                         "beam_size": i,
                         "epoch": epoch,
                         "config": config,
-                    }, str(model_output_dir) + '/best_model.pth'.format(epoch))
+                    }, str(model_output_dir) + '/best_model_epoch_{}.pth'.format(epoch))
 
     main_logger.info('Training done.')
-    best_checkpoint = torch.load(str(model_output_dir) + '/best_model.pth')
+    best_checkpoint = torch.load(str(model_output_dir) + '/best_model_epoch_30.pth')
     model.load_state_dict(best_checkpoint['model'])
     best_epoch = best_checkpoint['epoch']
     main_logger.info(f'Best checkpoint in {best_epoch} th epoch.')
