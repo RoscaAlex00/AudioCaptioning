@@ -31,7 +31,7 @@ lm:
     max_length: 100
     length_penalty: 1.0
     decoding: beam
-  eval_model: best
+  eval_model: weights/baseline_standard.bin
   eval_checkpoint: 0
   freeze:
     all: false
@@ -51,13 +51,13 @@ training:
   force_cpu: false
   batch_size: 4
   gradient_accumulation_steps: 2
-  num_workers: 8
+  num_workers: 1
   lr: 1.0e-05
   nb_epochs: 20
   save_steps: 1000
   seed: 0
 workflow:
-  train: true
-  validate: true
+  train: false
+  validate: false
   evaluate: true
   infer: true

@@ -1,12 +1,12 @@
-import numpy as np
-import csv
-from tqdm import tqdm
-from pathlib import Path
-import torch
-import librosa as lr
-import yaml
 import argparse
+import csv
 import string
+from pathlib import Path
+import numpy as np
+import torch
+import yaml
+from tqdm import tqdm
+from yamnet_input import yamnet_classify
 
 
 def preprocess_dataset(config):
@@ -50,16 +50,19 @@ def preprocess_dataset(config):
 
                     # Compute VGGish embeddings
                     vggish_embeddings = vggish_model.forward(str(data_path.joinpath(file_name))).detach().cpu().numpy()
+                    # Compute YAMnet keywords
+                    yamnet_logits = yamnet_classify(str(data_path.joinpath(file_name)))
 
                     # Output one npy file per reference caption
                     for i_cap, caption in enumerate(captions):
                         # Create recarray
                         temp_rec_array = np.rec.array(np.array(
-                            (file_name, vggish_embeddings, caption),
+                            (file_name, vggish_embeddings, caption, yamnet_logits[0::2, :]),
                             dtype=[
                                 ('file_name', 'U{}'.format(len(file_name))),
                                 ('vggish_embeddings', np.dtype(object)),
                                 ('caption', 'U{}'.format(len(caption))),
+                                ('yamnet_logits', np.dtype(object))
                             ]
                         ))
                         # Save recarray
@@ -72,14 +75,15 @@ def preprocess_dataset(config):
                 file_name = ex.name
                 # Compute VGGish embeddings
                 vggish_embeddings = vggish_model.forward(str(ex)).detach().cpu().numpy()
-
+                yamnet_logits = yamnet_classify(str(ex))
                 # Create recarray
                 temp_rec_array = np.rec.array(np.array(
-                    (file_name, vggish_embeddings, None),
+                    (file_name, vggish_embeddings, None, yamnet_logits[0::2, :]),
                     dtype=[
                         ('file_name', 'U{}'.format(len(file_name))),
                         ('vggish_embeddings', np.dtype(object)),
                         ('caption', np.dtype(object)),
+                        ('yamnet_logits', np.dtype(object))
                     ]
                 ))
 

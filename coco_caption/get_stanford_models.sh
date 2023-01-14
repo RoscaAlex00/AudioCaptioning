@@ -9,7 +9,15 @@ DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 cd $DIR
 
 if [ -f $SPICELIB/$JAR.jar ]; then
-  echo "Found Stanford CoreNLP."
+  echo "Downloading..."
+  wget http://nlp.stanford.edu/software/$CORENLP.zip
+  echo "Unzipping..."
+  unzip $CORENLP.zip -d $SPICELIB/
+  mv $SPICELIB/$CORENLP/$JAR.jar $SPICELIB/
+  mv $SPICELIB/$CORENLP/$JAR-models.jar $SPICELIB/
+  rm -f $CORENLP.zip
+  rm -rf $SPICELIB/$CORENLP/
+  echo "Done."
 else
   echo "Downloading..."
   wget http://nlp.stanford.edu/software/$CORENLP.zip

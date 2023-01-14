@@ -19,6 +19,8 @@ def main(config):
     if isinstance(settings['training']['seed'], int):
         torch.manual_seed(settings['training']['seed'])
 
+    print("Torch cuda:", torch.cuda.is_available())
+    print(torch.zeros(1).cuda())
     if torch.cuda.is_available() and not settings['training']['force_cpu']:
         device = torch.device('cuda')
     else:
@@ -93,7 +95,7 @@ def main(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--exp', type=str, default='exp001', help='Experience settings YAML file')
+    parser.add_argument('--exp', type=str, default='dcb', help='Experience settings YAML file')
 
     config = parser.parse_args()
     main(config)
