@@ -8,6 +8,7 @@ from pathlib import Path
 
 import torch.utils.data
 import numpy as np
+from yamnet_input import class_names_from_csv
 
 from transformers import BartTokenizerFast
 import string
@@ -24,6 +25,13 @@ class AACDatasetBART(torch.utils.data.Dataset):
         self.max_caption_tok_len = settings['data']['max_caption_tok_len']
         self.input_name = settings['data']['input_field_name']
         self.output_name = settings['data']['output_field_name']
+        self.cond_tok_field_name = settings['data']['cond_tok_field_name']
+        self.cond_tok_class_sel = settings['data']['cond_tok_class_sel']
+        self.cond_tok_time_sel = settings['data']['cond_tok_time_sel']
+        self.cond_tok_separator = settings['data']['cond_tok_separator']
+
+        if self.cond_tok_field_name is not None and 'logits' in self.cond_tok_field_name:
+            self.class_map = class_names_from_csv()
 
         self.tokenizer = tokenizer
 
@@ -32,7 +40,6 @@ class AACDatasetBART(torch.utils.data.Dataset):
 
     def __getitem__(self, item):
         ex = self.examples[item]
-        fname = Path(ex).name
         ex = np.load(str(ex), allow_pickle=True)
 
         # ----- Labels/Decoder inputs -----
@@ -60,21 +67,86 @@ class AACDatasetBART(torch.utils.data.Dataset):
         if len(list(in_e.size())) == 1:  # Single embedding in sequence
             in_e = in_e.unsqueeze(0)
 
-        # ----- Reformat audio inputs -----
-        audio_att_mask = torch.zeros((self.max_audio_len,)).long()
+        # ----- Conditioning inputs -----
+        cond_text = None
+        if self.cond_tok_field_name is not None:
+            if 'logits' in self.cond_tok_field_name:
+                cond_tok_logits = torch.Tensor(ex[self.cond_tok_field_name].item()).float()
+                # ----- Tag sampling -----
+                if 'top' in self.cond_tok_time_sel:  # Eg: 'top5'
+                    if cond_tok_logits.size(0) == 1 and in_e.size(0) != 1:
+                        cond_tok_logits = cond_tok_logits.repeat(in_e.size(0), 1)
+                    cond_tok_logits = torch.mean(cond_tok_logits, dim=0)  # Average along time
+                    cond_tok_class = torch.argsort(cond_tok_logits, descending=True)[:int(self.cond_tok_time_sel[3:])]
+                else:  # Num tags = num logits
+                    cond_tok_class = torch.multinomial(cond_tok_logits, 1)
+                len_cond_tok = cond_tok_logits.size(0)
+                # ----- Reformat text inputs -----
+                cond_text = self.cond_tok_separator.join([self.class_map[int(ic)] for ic in cond_tok_class]) + '.'
+            cond_tokens = self.tokenizer(cond_text, max_length=64, return_tensors='pt',
+                                         padding='max_length')  # Reduce to 128 on AudioCaps for speedup
+            att_mask = cond_tokens['attention_mask'].squeeze()
+            cond_tokens = cond_tokens['input_ids'].squeeze().long()
+        else:
+            cond_tokens = None
+            att_mask = None
 
-        audio_att_mask[:in_e.size(0)] = 1
-        if in_e.size(0) > self.max_audio_len:
-            in_e = in_e[:self.max_audio_len, :]
-        elif in_e.size(0) < self.max_audio_len:
-            in_e = torch.cat([in_e, torch.zeros(self.max_audio_len - in_e.size(0), in_e.size(1)).float()])
+        # ----- Reformat audio inputs -----
+        if self.cond_tok_field_name is None:  # No token cond
+            audio_att_mask = torch.zeros((self.max_audio_len,)).long()
+
+            len_in_e = in_e.size(0)
+
+            audio_att_mask[:len_in_e] = 1
+            if in_e.size(0) > self.max_audio_len:
+                in_e = in_e[:self.max_audio_len, :]
+            elif in_e.size(0) < self.max_audio_len:
+                in_e = torch.cat([in_e, torch.zeros(self.max_audio_len - in_e.size(0),
+                                                    in_e.size(1)).float()])  # BART encoder max_length = 1024 ?
+        else:
+            audio_att_mask = None
+            if 'top' in self.cond_tok_time_sel:  # Eg: 'top5'
+                if in_e.size(0) != 1:
+                    in_e = in_e.mean(dim=0, keepdim=True)
+                in_e = in_e[0, :].repeat(cond_tokens.size(0), 1)
+            else:  # Num tags = num logits
+                if in_e.size(0) != len_cond_tok and in_e.size(0) == 1:  # Eg.: yamnet logits with panns embeddings
+                    in_e = in_e.repeat(len_cond_tok, 1)
+                if in_e.size(0) != len_cond_tok and int(
+                        np.ceil(len_cond_tok / 10.) / in_e.size(0)) == 1:  # Panns for Clotho
+                    in_e = in_e.repeat_interleave(10, dim=0)
+                    in_e = in_e[:len_cond_tok, :]
+                    if in_e.size(0) < len_cond_tok:  # e.g. 30 < 31 in some cases
+                        in_e = torch.cat((in_e, in_e[-1, :].repeat(len_cond_tok - in_e.size(0), 1)), dim=0)
+                if in_e.size(0) != len_cond_tok and in_e.size(0) == 2:
+                    in_e = in_e[0, :].repeat(len_cond_tok, 1)
+                assert in_e.size(
+                    0) == len_cond_tok, 'Audio embeddings ({}) and tags ({}) dimensions do not match for file {}.'.format(
+                    in_e.size(0), len_cond_tok, ex['file_name'].item())
+                sep_token = \
+                    self.tokenizer.encode('and' + self.cond_tok_separator, return_tensors='pt',
+                                          add_special_tokens=False)[
+                        0, 1]
+                audio_features = torch.zeros((att_mask.size(0), in_e.size(1)))
+                i_frame = 0
+                for i_tok in range(att_mask.size(0)):
+                    if cond_tokens[i_tok] == 1 or cond_tokens[i_tok] == 0 or cond_tokens[i_tok] == 2:
+                        pass  # BOS, EOS, PAD
+                    elif cond_tokens[i_tok] == sep_token:  # separator
+                        i_frame += 1
+                    else:
+                        audio_features[i_tok, :] = in_e[i_frame, :]
+                in_e = audio_features
 
         return {'audio_features': in_e,
                 'attention_mask': audio_att_mask,
                 'decoder_attention_mask': tok_e['attention_mask'].squeeze() if tok_e[
                                                                                    'attention_mask'] is not None else None,
                 'file_name': ex['file_name'].item(),
-                'labels': tok_e['input_ids'].squeeze().long() if tok_e['input_ids'] is not None else None}
+                'labels': tok_e['input_ids'].squeeze().long() if tok_e['input_ids'] is not None else None,
+                'cond_tokens': cond_tokens,
+                'cond_text': cond_text
+                }
 
 
 # Modification of the transformers default_data_collator function to allow string and list inputs

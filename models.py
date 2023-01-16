@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,6 +17,7 @@ class BARTAAC(nn.Module):
         super().__init__()
 
         self.device = device
+        print(device)
 
         # Main model configuration
         bart_config = BartConfig(vocab_size=settings['lm']['config']['vocab_size'],
@@ -35,7 +38,8 @@ class BARTAAC(nn.Module):
                                  early_stopping=settings['lm']['generation']['early_stopping'],
                                  num_beams=settings['lm']['generation']['num_beams'],
                                  length_penalty=settings['lm']['generation']['length_penalty'],
-                                 no_repeat_ngram_size=settings['lm']['generation']['no_repeat_ngram_size'])
+                                 no_repeat_ngram_size=settings['lm']['generation']['no_repeat_ngram_size'],
+                                 scale_embedding=True)
         print(bart_config)
 
         # Other parameters
@@ -43,6 +47,7 @@ class BARTAAC(nn.Module):
         lm_emb_size = bart_config.d_model
         pretrained_lm = settings['lm']['pretrained']
         n_adapt_layers = settings['adapt']['nb_layers']
+        self.token_conditioning = settings['lm']['config']['token_conditioning']
 
         # Audio features to d_model embeddings
         if n_adapt_layers >= 1:
@@ -139,12 +144,19 @@ class BARTAAC(nn.Module):
         else:
             audio_embs = audio_features
 
+        if self.token_conditioning:
+            # Add Embeddings
+            lm_embs = audio_embs + (
+                    self.bart_lm.model.encoder.embed_tokens(cond_tokens) * self.bart_lm.model.encoder.embed_scale)
+        else:
+            lm_embs = audio_embs
+
         # Encoder pass
         encoder_outputs = self.bart_lm.model.encoder(
             input_ids=None,
             attention_mask=attention_mask,
             head_mask=head_mask,
-            inputs_embeds=audio_embs,
+            inputs_embeds=lm_embs,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=True)['last_hidden_state']
@@ -183,11 +195,18 @@ class BARTAAC(nn.Module):
         else:
             audio_embs = audio_features
 
+        if self.token_conditioning:
+            # Add Embeddings
+            lm_embs = audio_embs + (
+                    self.bart_lm.model.encoder.embed_tokens(cond_tokens) * self.bart_lm.model.encoder.embed_scale)
+        else:
+            lm_embs = audio_embs
+
         encoder_outputs = self.bart_lm.model.encoder(
             input_ids=None,
             attention_mask=attention_mask,
             head_mask=None,
-            inputs_embeds=audio_embs,
+            inputs_embeds=lm_embs,
             output_attentions=None,
             output_hidden_states=None,
             return_dict=True)
@@ -195,14 +214,14 @@ class BARTAAC(nn.Module):
         max_len = self.bart_lm.config.max_length
         cur_len = 0
 
-        input_ids = torch.zeros((audio_embs.size(0), 1)).long().to(self.device)
+        input_ids = torch.zeros((lm_embs.size(0), 1)).long().to(self.device)
         input_ids[:, 0] = self.bart_lm.config.decoder_start_token_id
 
         outputs = self.bart_lm(input_ids=None,
                                attention_mask=attention_mask,
                                decoder_input_ids=input_ids,
                                decoder_attention_mask=None,
-                               inputs_embeds=audio_embs,
+                               inputs_embeds=lm_embs,
                                use_cache=True,
                                return_dict=True)
 
@@ -243,12 +262,19 @@ class BARTAAC(nn.Module):
         else:
             audio_embs = audio_features
 
+        if self.token_conditioning:
+            # Add Embeddings
+            lm_embs = audio_embs + (
+                    self.bart_lm.model.encoder.embed_tokens(cond_tokens) * self.bart_lm.model.encoder.embed_scale)
+        else:
+            lm_embs = audio_embs
+
         # Encoder pass
         encoder_outputs = self.bart_lm.model.encoder(
             input_ids=None,
             attention_mask=attention_mask,
             head_mask=None,
-            inputs_embeds=audio_embs,
+            inputs_embeds=lm_embs,
             output_attentions=None,
             output_hidden_states=None,
             return_dict=True)

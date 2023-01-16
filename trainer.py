@@ -16,6 +16,8 @@ class BARTAACTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         if 'file_name' in inputs.keys():
             file_name = inputs.pop('file_name')
+        if 'cond_text' in inputs.keys():
+            cond_text = inputs.pop('cond_text')
 
         # Inputs should now only contain audio_features, input_ids and attention_mask
         if self.label_smoother is not None and "labels" in inputs:
@@ -28,7 +30,7 @@ class BARTAACTrainer(Trainer):
         if labels is not None:
             loss = self.label_smoother({'logits': outputs}, labels)
 
-        tqdm.write(str(loss.item()))
+        # tqdm.write(str(loss.item()))
 
         return (loss, outputs) if return_outputs else loss  # Do not return past key values
 
@@ -51,6 +53,8 @@ class BARTAACTrainer(Trainer):
                 inputs.pop('decoder_attention_mask')
 
                 file_name = inputs.pop('file_name')
+                if 'cond_text' in inputs.keys():
+                    cond_text = inputs.pop('cond_text')
 
                 if generation_mode == 'beam':
                     outputs = model.generate_beam(**inputs)
@@ -101,6 +105,9 @@ class BARTAACTrainer(Trainer):
                     inputs.pop('decoder_attention_mask')
 
                 file_name = inputs.pop('file_name')
+
+                if 'cond_text' in inputs.keys():
+                    cond_text = inputs.pop('cond_text')
 
                 if generation_mode == 'beam':
                     outputs = model.generate_beam(**inputs)

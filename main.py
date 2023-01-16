@@ -95,7 +95,7 @@ def main(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--exp', type=str, default='dcb', help='Experience settings YAML file')
+    parser.add_argument('--exp', type=str, default='dcb_test', help='Experience settings YAML file')
 
     config = parser.parse_args()
     main(config)
