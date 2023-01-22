@@ -17,6 +17,7 @@ class YAMLLoader(yaml.SafeLoader):
     """
 
     def __init__(self, stream):
+
         self._root = os.path.split(stream.name)[0]
         super(YAMLLoader, self).__init__(stream)
 

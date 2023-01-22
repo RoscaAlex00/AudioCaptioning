@@ -62,7 +62,7 @@ def dump_pickle_file(obj: object, file_name: Union[str, Path],
 
 def load_audio_file(audio_file: str, sr: int, mono: bool,
                     offset: Optional[float] = 0.0,
-                    duration: Optional[Union[float, None]] = None) \
+                    duration: Optional[Union[float, None]] = None)\
         -> np.ndarray:
     """Loads the data of an audio file.
 
@@ -83,7 +83,7 @@ def load_audio_file(audio_file: str, sr: int, mono: bool,
                 offset=offset, duration=duration)[0]
 
 
-def load_numpy_object(file_name: Path) \
+def load_numpy_object(file_name: Path)\
         -> Union[np.ndarray, np.recarray]:
     """Loads and returns a numpy object.
 
@@ -96,7 +96,7 @@ def load_numpy_object(file_name: Path) \
 
 
 def load_pickle_file(file_name: Path,
-                     encoding='latin1') \
+                     encoding='latin1')\
         -> Union[object, List, Dict, np.ndarray]:
     """Loads a pickle file.
 
@@ -112,7 +112,7 @@ def load_pickle_file(file_name: Path,
 
 
 def load_settings_file(file_name: Path,
-                       settings_dir=Path('settings')) \
+                       settings_dir=Path('settings'))\
         -> Dict:
     """Reads and returns the contents of a YAML settings file.
 
