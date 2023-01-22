@@ -61,3 +61,6 @@ workflow:
   validate: false
   evaluate: true
   infer: false
+model_inputs:
+  audio_features: true
+  keywords: true

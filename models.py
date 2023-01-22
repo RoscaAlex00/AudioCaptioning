@@ -14,6 +14,7 @@ class BARTAAC(nn.Module):
         super().__init__()
         
         self.device = device
+        print(device)
         
         # Main model configuration
         bart_config = BartConfig(vocab_size=settings['lm']['config']['vocab_size'],
@@ -42,6 +43,10 @@ class BARTAAC(nn.Module):
         lm_emb_size = bart_config.d_model
         pretrained_lm = settings['lm']['pretrained']
         n_adapt_layers = settings['adapt']['nb_layers']
+        self.audio_input = settings["model_inputs"]["audio_features"]
+        self.keyword_input = settings["model_inputs"]["keywords"]
+        if not (self.audio_input or self.keyword_input):
+            raise Exception("Need at least one model input to be true")
         
         # Audio features to d_model embeddings
         if n_adapt_layers >= 1:
@@ -139,16 +144,19 @@ class BARTAAC(nn.Module):
             audio_embs = audio_features
         
         # Encoder pass
-        encoder_outputs = self.bart_lm.model.encoder(
-                    input_ids=None,
-                    attention_mask=attention_mask,
-                    head_mask=head_mask,
-                    inputs_embeds=audio_embs,
-                    output_attentions=output_attentions,
-                    output_hidden_states=output_hidden_states,
-                    return_dict=True)['last_hidden_state']
-        
-        encoder_outputs = [encoder_outputs]
+        if self.audio_input:
+            encoder_outputs = self.bart_lm.model.encoder(
+                        input_ids=None,
+                        attention_mask=attention_mask,
+                        head_mask=head_mask,
+                        inputs_embeds=audio_embs,
+                        output_attentions=output_attentions,
+                        output_hidden_states=output_hidden_states,
+                        return_dict=True)['last_hidden_state']
+            
+            encoder_outputs = [encoder_outputs]
+        else:
+            encoder_outputs = None
         
         # Decoder-only pass
         outputs = self.bart_lm(input_ids=None,
@@ -159,7 +167,7 @@ class BARTAAC(nn.Module):
                     decoder_head_mask=decoder_head_mask,
                     encoder_outputs=encoder_outputs,
                     past_key_values=past_key_values,
-                    inputs_embeds=None,
+                    inputs_embeds=cond_tokens if self.keyword_input else None,
                     decoder_inputs_embeds=decoder_inputs_embeds,
                     labels=labels,
                     use_cache=use_cache,
