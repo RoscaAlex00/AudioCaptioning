@@ -1,5 +1,5 @@
 .venv/
-data/
+data/clotho_v2_vggish/
 utils/__pycache__
 __init__.py
 eval_metrics.py

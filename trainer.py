@@ -27,7 +27,7 @@ class BARTAACTrainer(Trainer):
         if labels is not None:
             loss = self.label_smoother({'logits': outputs}, labels)
             
-        tqdm.write(str(loss.item()))
+        # tqdm.write(str(loss.item())) # Maybe delete this line, as it floods the terminal?
         
         return (loss, outputs) if return_outputs else loss # Do not return past key values
     
@@ -66,7 +66,12 @@ class BARTAACTrainer(Trainer):
             print(all_labels)
         all_preds = torch.cat(all_preds, dim=0).numpy()
         print(all_preds)
-        metrics, all_gt_captions, all_pred_captions = aac_metrics({'predictions': all_preds, 'label_ids': all_labels, 'filenames': all_filenames}, tokenizer)
+
+        if eval_dataset.keyword_input:
+            max_keywords = eval_dataset.max_keywords
+        else:
+            max_keywords = 0
+        metrics, all_gt_captions, all_pred_captions = aac_metrics({'predictions': all_preds, 'label_ids': all_labels, 'filenames': all_filenames}, tokenizer, max_keywords)
         
         # Write outputs to disk
         write_json(metrics, Path(self.args.output_dir).joinpath('metrics_coco_'+generation_mode+'.json'))
@@ -111,10 +116,15 @@ class BARTAACTrainer(Trainer):
         
         all_preds = torch.cat(all_preds, dim=0).numpy()
         
+        if test_dataset.keyword_input:
+            max_keywords = test_dataset.max_keywords
+        else:
+            max_keywords = 0
+
         # Decoding
         all_pred_caps = []
         for i_pred in range(all_preds.shape[0]):
-            pred_ = tokenizer.decode(all_preds[i_pred,:])
+            pred_ = tokenizer.decode(all_preds[i_pred, max_keywords+1:])
             all_pred_caps.append(pred_.replace('<|pad|>', '').replace('<|endoftext|>', '').replace('</s>', '').replace('<s>', '').replace('<pad>', ''))
         
         # Write submission-ready file

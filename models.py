@@ -37,10 +37,13 @@ class BARTAAC(nn.Module):
                                 length_penalty=settings['lm']['generation']['length_penalty'],
                                 no_repeat_ngram_size=settings['lm']['generation']['no_repeat_ngram_size'])
         # print(bart_config)
+
+        self.decoder_sos = bart_config.decoder_start_token_id
         
         # Other parameters
         audio_emb_size = settings['adapt']['audio_emb_size']
         lm_emb_size = bart_config.d_model
+        self.emb_size = lm_emb_size
         pretrained_lm = settings['lm']['pretrained']
         n_adapt_layers = settings['adapt']['nb_layers']
         self.audio_input = settings["model_inputs"]["audio_features"]
@@ -138,13 +141,13 @@ class BARTAAC(nn.Module):
                 return_dict=True,
         ):
         
-        if self.audio_adapt is not None:
-            audio_embs = self.audio_adapt(audio_features)
-        else:
-            audio_embs = audio_features
+        if self.audio_input:
+            if self.audio_adapt is not None:
+                audio_embs = self.audio_adapt(audio_features)
+            else:
+                audio_embs = audio_features
         
         # Encoder pass
-        if self.audio_input:
             encoder_outputs = self.bart_lm.model.encoder(
                         input_ids=None,
                         attention_mask=attention_mask,
@@ -156,10 +159,19 @@ class BARTAAC(nn.Module):
             
             encoder_outputs = [encoder_outputs]
         else:
-            encoder_outputs = None
+            # Make some fake encoder outputs so it doesn't throw an error
+            encoder_outputs = torch.zeros((decoder_input_ids.size(0), self.emb_size)).to(self.device)
+            encoder_outputs = BaseModelOutput(encoder_outputs)
+
+        if self.keyword_input:
+            # Appending the caption and adding a sos token in between
+            decoder_input_ids = torch.cat(
+                (decoder_input_ids.to(self.device),
+                torch.fill(torch.zeros((labels.size(0), 1), dtype=torch.long), self.decoder_sos).to(self.device),
+                labels[:, decoder_input_ids.size(-1)+1:]), dim=-1)
         
         # Decoder-only pass
-        outputs = self.bart_lm(input_ids=None,
+        outputs = self.bart_lm(input_ids=input_ids,
                     attention_mask=attention_mask,
                     decoder_input_ids=decoder_input_ids,
                     decoder_attention_mask=decoder_attention_mask,
@@ -167,7 +179,7 @@ class BARTAAC(nn.Module):
                     decoder_head_mask=decoder_head_mask,
                     encoder_outputs=encoder_outputs,
                     past_key_values=past_key_values,
-                    inputs_embeds=cond_tokens if self.keyword_input else None,
+                    inputs_embeds=None,
                     decoder_inputs_embeds=decoder_inputs_embeds,
                     labels=labels,
                     use_cache=use_cache,
@@ -182,7 +194,8 @@ class BARTAAC(nn.Module):
                 audio_features=None,
                 cond_tokens=None,
                 attention_mask=None,
-                inputs_embeds=None
+                inputs_embeds=None,
+                decoder_input_ids=None
         ):
         
         if self.audio_adapt is not None:
@@ -238,28 +251,39 @@ class BARTAAC(nn.Module):
                 audio_features=None,
                 cond_tokens=None,
                 attention_mask=None,
-                inputs_embeds=None
+                inputs_embeds=None,
+                decoder_input_ids=None
         ):
         
         self.bart_lm.force_bos_token_to_be_generated=True
         
-        if self.audio_adapt is not None:
-            audio_embs = self.audio_adapt(audio_features)
+        if self.audio_input:
+            if self.audio_adapt is not None:
+                audio_embs = self.audio_adapt(audio_features)
+            else:
+                audio_embs = audio_features
+            
+            # Encoder pass
+            encoder_outputs = self.bart_lm.model.encoder(
+                    input_ids=None,
+                    attention_mask=attention_mask,
+                    head_mask=None,
+                    inputs_embeds=audio_embs,
+                    output_attentions=None,
+                    output_hidden_states=None,
+                    return_dict=True)
+        
+            input_ids = torch.zeros((encoder_outputs['last_hidden_state'].size(0),1)).long().to(self.device)
         else:
-            audio_embs = audio_features
-        
-        # Encoder pass
-        encoder_outputs = self.bart_lm.model.encoder(
-                input_ids=None,
-                attention_mask=attention_mask,
-                head_mask=None,
-                inputs_embeds=audio_embs,
-                output_attentions=None,
-                output_hidden_states=None,
-                return_dict=True)
-        
-        input_ids = torch.zeros((encoder_outputs['last_hidden_state'].size(0),1)).long().to(self.device)
+            # Make some fake encoder outputs so it doesn't throw an error
+            encoder_outputs = torch.zeros((decoder_input_ids.size(0), self.emb_size)).to(self.device)
+            encoder_outputs = BaseModelOutput(encoder_outputs)
+            input_ids = torch.zeros((decoder_input_ids.size(0), 1), dtype=torch.long).to(self.device)
         input_ids[:, 0] = self.bart_lm.config.decoder_start_token_id
+
+        if self.keyword_input and decoder_input_ids is not None:
+            # Appending the caption and adding a sos token in between
+            input_ids = torch.cat((decoder_input_ids, input_ids), dim=-1)
         
         # Beam decoding
         outputs = self.bart_lm.generate(input_ids=None,

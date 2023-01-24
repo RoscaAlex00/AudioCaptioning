@@ -2,18 +2,20 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
 
 from torch.utils.data import DataLoader
+import torch
 
 from typing import List, Tuple
 from pathlib import Path
 
 import torch.utils.data
 import numpy as np
+import pandas as pd
 
 from transformers import BartTokenizerFast
 import string
 
 class AACDatasetBART(torch.utils.data.Dataset):
-    def __init__(self, settings, data_dir, split, tokenizer):
+    def __init__(self, settings, data_dir : Path, split, tokenizer):
         super(AACDatasetBART, self).__init__()
         the_dir = data_dir.joinpath(split)
         
@@ -23,7 +25,27 @@ class AACDatasetBART(torch.utils.data.Dataset):
         self.max_caption_tok_len = settings['data']['max_caption_tok_len']
         self.input_name = settings['data']['input_field_name']
         self.output_name = settings['data']['output_field_name']
-        
+        self.audio_input = settings["model_inputs"]["audio_features"]
+        self.keyword_input = settings["model_inputs"]["keywords"]
+        self.keyword_dir = settings["data"]["keyword_dir"]
+        self.max_keywords = settings["model_inputs"]["max_keywords"]
+
+        if self.keyword_dir is None:
+            # Set keyword input to false, as there is no directory given to get the keywords from
+            self.keyword_input = False
+
+        if self.keyword_input:
+            metadata_dir = Path(settings['data']['root_dir'], settings['data']['keyword_dir'])
+            self.keyword_csv = pd.read_csv(metadata_dir.joinpath("clotho_metadata_" + split + ".csv"), encoding='unicode_escape')
+            if "keywords" not in self.keyword_csv.columns:
+                print(f"No keywords found for {split} split. keyword_input will be put to False")
+                self.keyword_input = False
+            else:
+                self.keyword_csv = self.keyword_csv[["file_name", "keywords"]] # only need these columns
+                
+        if not (self.audio_input or self.keyword_input):
+            raise Exception("Need at least one model input to be true")
+
         self.tokenizer = tokenizer
         
     def __len__(self):
@@ -48,30 +70,58 @@ class AACDatasetBART(torch.utils.data.Dataset):
                 tok_e['attention_mask'] = tok_e['attention_mask'][:,:self.max_caption_tok_len]
         else:
             tok_e = {'input_ids': None, 'attention_mask': None}
+
+        # ----- Keywords -----
+        if self.keyword_input:
+            # Extracting corresponding keywords
+            restoredfname = fname[7:-6] # remove clotho_ prefix and _x.npy suffix
+            kwords = self.keyword_csv[self.keyword_csv["file_name"] == restoredfname]["keywords"]
+            kwords = kwords.iloc[0]
+            kwords = " ".join(kwords.split(";"))
+            tok_kws = self.tokenizer(kwords, max_length=self.max_keywords, return_tensors="pt", padding="max_length")
+            kws_mask = tok_kws["attention_mask"]
+            tok_kws = tok_kws["input_ids"]
+            if tok_kws.size(1) > self.max_keywords:
+                tok_kws = tok_kws[:, :self.max_keywords]
+                kws_mask = kws_mask[:, :self.max_keywords]
+
+            # Adjusting the decoder attention mask
+            decoder_attention_mask = torch.cat((kws_mask.squeeze(), torch.ones((1, ), dtype=torch.long), tok_e["attention_mask"].squeeze()))
+            tok_e["attention_mask"] = decoder_attention_mask.unsqueeze(dim=0)
+
+            # Adjusting the labels (tokens with -100 are ignored, so no loss computation on those)
+            labels = torch.cat((torch.fill(torch.zeros((1, self.max_keywords + 1), dtype=torch.long), -100), tok_e["input_ids"]), dim=-1)
+            tok_e["input_ids"] = labels
         
-        # ----- Audio conditioning -----
-        in_e = ex[self.input_name].item()
+
+        if self.audio_input:
+            # ----- Audio conditioning -----
+            in_e = ex[self.input_name].item()
+            
+            in_e = torch.Tensor(in_e).float().unsqueeze(0)
+            
+            in_e = in_e.squeeze()
+            if len(list(in_e.size())) == 1: # Single embedding in sequence
+                in_e = in_e.unsqueeze(0)
         
-        in_e = torch.Tensor(in_e).float().unsqueeze(0)
-        
-        in_e = in_e.squeeze()
-        if len(list(in_e.size())) == 1: # Single embedding in sequence
-            in_e = in_e.unsqueeze(0)
-        
-        # ----- Reformat audio inputs -----
-        audio_att_mask = torch.zeros((self.max_audio_len,)).long()
-        
-        audio_att_mask[:in_e.size(0)] = 1
-        if in_e.size(0) > self.max_audio_len:
-            in_e = in_e[:self.max_audio_len, :]
-        elif in_e.size(0) < self.max_audio_len:
-            in_e = torch.cat([in_e, torch.zeros(self.max_audio_len - in_e.size(0), in_e.size(1)).float()])
+            # ----- Reformat audio inputs -----
+            audio_att_mask = torch.zeros((self.max_audio_len,)).long()
+            
+            audio_att_mask[:in_e.size(0)] = 1
+            if in_e.size(0) > self.max_audio_len:
+                in_e = in_e[:self.max_audio_len, :]
+            elif in_e.size(0) < self.max_audio_len:
+                in_e = torch.cat([in_e, torch.zeros(self.max_audio_len - in_e.size(0), in_e.size(1)).float()])
+        else:
+            in_e = None
+            audio_att_mask = None
         
         return {'audio_features': in_e,
                 'attention_mask': audio_att_mask,
                 'decoder_attention_mask': tok_e['attention_mask'].squeeze() if tok_e['attention_mask'] is not None else None,
                 'file_name': ex['file_name'].item(),
-                'labels': tok_e['input_ids'].squeeze().long() if tok_e['input_ids'] is not None else None}
+                'labels': tok_e['input_ids'].squeeze().long() if tok_e['input_ids'] is not None else None,
+                'decoder_input_ids': tok_kws.squeeze() if self.keyword_input else None}
 
 
 

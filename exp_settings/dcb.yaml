@@ -4,6 +4,7 @@ adapt:
 data:
   root_dir: data
   features_dir: clotho_v2_vggish
+  keyword_dir: clotho_v2
   input_field_name: vggish_embeddings
   output_field_name: caption
   max_audio_len: 32
@@ -64,4 +65,4 @@ workflow:
 model_inputs:
   audio_features: true
   keywords: true
-  
+  max_keywords: 20
