@@ -167,7 +167,7 @@ class BARTAAC(nn.Module):
             # Appending the caption and adding a sos token in between
             decoder_input_ids = torch.cat(
                 (decoder_input_ids.to(self.device),
-                torch.fill(torch.zeros((labels.size(0), 1), dtype=torch.long), self.decoder_sos).to(self.device),
+                torch.full((labels.size(0), 1), self.decoder_sos, dtype=torch.long).to(self.device),
                 labels[:, decoder_input_ids.size(-1)+1:]), dim=-1)
         
         # Decoder-only pass

@@ -19,7 +19,7 @@ class AACDatasetBART(torch.utils.data.Dataset):
         super(AACDatasetBART, self).__init__()
         the_dir = data_dir.joinpath(split)
         
-        self.examples = sorted(the_dir.iterdir())
+        self.examples = sorted(the_dir.iterdir())[:60]
         
         self.max_audio_len = settings['data']['max_audio_len']
         self.max_caption_tok_len = settings['data']['max_caption_tok_len']
@@ -90,7 +90,7 @@ class AACDatasetBART(torch.utils.data.Dataset):
             tok_e["attention_mask"] = decoder_attention_mask.unsqueeze(dim=0)
 
             # Adjusting the labels (tokens with -100 are ignored, so no loss computation on those)
-            labels = torch.cat((torch.fill(torch.zeros((1, self.max_keywords + 1), dtype=torch.long), -100), tok_e["input_ids"]), dim=-1)
+            labels = torch.cat((torch.full((1, self.max_keywords + 1), -100, dtype=torch.long), tok_e["input_ids"]), dim=-1)
             tok_e["input_ids"] = labels
         
 
