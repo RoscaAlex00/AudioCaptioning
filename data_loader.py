@@ -19,7 +19,7 @@ class AACDatasetBART(torch.utils.data.Dataset):
         super(AACDatasetBART, self).__init__()
         the_dir = data_dir.joinpath(split)
         
-        self.examples = sorted(the_dir.iterdir())[:60]
+        self.examples = sorted(the_dir.iterdir())
         
         self.max_audio_len = settings['data']['max_audio_len']
         self.max_caption_tok_len = settings['data']['max_caption_tok_len']
