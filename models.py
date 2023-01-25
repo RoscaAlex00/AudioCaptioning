@@ -164,12 +164,12 @@ class BARTAAC(nn.Module):
             encoder_outputs = BaseModelOutput(encoder_outputs)
 
         if self.keyword_input:
-            labels[:, decoder_input_ids.size(-1)] = self.decoder_sos
             # Appending the caption and adding a sos token in between
             decoder_input_ids = torch.cat(
                 (decoder_input_ids.to(self.device),
                 torch.full((labels.size(0), 1), self.decoder_sos, dtype=torch.long).to(self.device),
-                labels[:, decoder_input_ids.size(-1)+1:]), dim=-1)
+                labels[:, decoder_input_ids.size(-1):-1]), dim=-1)
+            labels[:, -1] = self.decoder_sos
         
         # Decoder-only pass
         outputs = self.bart_lm(input_ids=input_ids,

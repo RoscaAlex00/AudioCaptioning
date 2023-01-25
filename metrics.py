@@ -7,9 +7,9 @@ def aac_metrics(outputs, tokenizer, max_keywords=0):
     gt_captions = []
     pred_captions = []
     for i_ex in range(outputs['predictions'].shape[0]):
-        gt_ = tokenizer.decode(outputs['label_ids'][i_ex, max_keywords+1:])
+        gt_ = tokenizer.decode(outputs['label_ids'][i_ex, max_keywords:])
         gt_captions.append(gt_.replace('<|pad|>', '').replace('<|endoftext|>', '').replace('</s>', '').replace('<s>', '').replace('<pad>', ''))
-        pred_ = tokenizer.decode(outputs['predictions'][i_ex, max_keywords+1:])
+        pred_ = tokenizer.decode(outputs['predictions'][i_ex, max_keywords:])
         pred_captions.append(pred_.replace('<|pad|>', '').replace('<|endoftext|>', '').replace('</s>', '').replace('<s>', '').replace('<pad>', ''))
         
         # Group for COCO metrics
