@@ -12,6 +12,8 @@ from pathlib import Path
 
 # Apart from the compute_loss function, all training operations are defined in the Transformers Trainer class
 class BARTAACTrainer(Trainer):
+    count = 0
+
     def compute_loss(self, model, inputs, return_outputs=False):
         if 'file_name' in inputs.keys():
             file_name = inputs.pop('file_name')
@@ -27,7 +29,10 @@ class BARTAACTrainer(Trainer):
         if labels is not None:
             loss = self.label_smoother({'logits': outputs}, labels)
             
-        # tqdm.write(str(loss.item())) # Maybe delete this line, as it floods the terminal?
+        if self.count % 100 == 0:
+            tqdm.write(str(loss.item())) # Maybe delete this line, as it floods the terminal?
+
+        self.count += 1
         
         return (loss, outputs) if return_outputs else loss # Do not return past key values
     

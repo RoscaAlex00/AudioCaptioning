@@ -164,6 +164,7 @@ class BARTAAC(nn.Module):
             encoder_outputs = BaseModelOutput(encoder_outputs)
 
         if self.keyword_input:
+            labels[:, decoder_input_ids.size(-1)] = self.decoder_sos
             # Appending the caption and adding a sos token in between
             decoder_input_ids = torch.cat(
                 (decoder_input_ids.to(self.device),
