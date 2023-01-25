@@ -29,6 +29,7 @@ def preprocess_dataset(config):
 
         annotation_path = Path(settings['data']['root_path'], settings['data']['input_path'],
                                'clotho_captions_' + split + '.csv')
+
         if annotation_path.exists():
             example_list = []
             with open(annotation_path, 'r') as f:

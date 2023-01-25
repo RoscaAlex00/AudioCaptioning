@@ -7,11 +7,12 @@ data:
   input_field_name: vggish_embeddings
   output_field_name: caption
   cond_tok_class_sel: sample
-  cond_tok_field_name:
+  cond_tok_field_name: yamnet_logits
   cond_tok_separator: '. '
   cond_tok_time_sel: unroll
   max_audio_len: 32
   max_caption_tok_len: 64
+  drop_last: true
 lm:
   config: # Model parameters
     activation_dropout: 0.1
@@ -27,7 +28,7 @@ lm:
     encoder_ffn_dim: 3072
     encoder_layers: 6
     vocab_size: 50265
-    token_conditioning: false
+    token_conditioning: true
     metadata: false
   generation: # Generation parameters
     early_stopping: true
@@ -37,7 +38,7 @@ lm:
     max_length: 100
     length_penalty: 1.0
     decoding: beam
-  eval_model: weights/baseline_standard.bin
+  eval_model: best
   eval_checkpoint: 0
   freeze:
     all: false
@@ -50,20 +51,20 @@ lm:
     enc_attn: false
     enc_mlp: false
     mlp: false
-  tokenizer: facebook/bart-large
+  tokenizer: facebook/bart-base
   pretrained: null
 training:
-  eval_steps: 1000
+  eval_steps: 3000
   force_cpu: false
-  batch_size: 4
+  batch_size: 1
   gradient_accumulation_steps: 2
   num_workers: 1
   lr: 1.0e-05
-  nb_epochs: 20
-  save_steps: 1000
+  nb_epochs: 6
+  save_steps: 3000
   seed: 0
 workflow:
-  train: false
-  validate: false
+  train: true
+  validate: true
   evaluate: true
   infer: true

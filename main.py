@@ -31,6 +31,7 @@ def main(config):
     training_args = TrainingArguments(output_dir=out_dir,
                                       learning_rate=settings['training']['lr'],
                                       per_device_train_batch_size=settings['training']['batch_size'],
+                                      per_device_eval_batch_size=settings['training']['batch_size'],
                                       gradient_accumulation_steps=settings['training']['gradient_accumulation_steps'],
                                       dataloader_num_workers=settings['training']['num_workers'],
                                       save_steps=settings['training']['save_steps'],
@@ -95,7 +96,7 @@ def main(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--exp', type=str, default='dcb_test', help='Experience settings YAML file')
+    parser.add_argument('--exp', type=str, default='vggish_yamnet_top10', help='Experience settings YAML file')
 
     config = parser.parse_args()
     main(config)

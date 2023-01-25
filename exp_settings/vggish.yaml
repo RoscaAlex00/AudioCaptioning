@@ -28,6 +28,7 @@ lm:
     encoder_layers: 6
     vocab_size: 50265
     token_conditioning: false
+    metadata: false
   generation: # Generation parameters
     early_stopping: true
     no_repeat_ngram_size: 3

@@ -9,6 +9,7 @@ from pathlib import Path
 import torch.utils.data
 import numpy as np
 from yamnet_input import class_names_from_csv
+from metadata import load_pickle_file
 
 from transformers import BartTokenizerFast
 import string
@@ -29,9 +30,14 @@ class AACDatasetBART(torch.utils.data.Dataset):
         self.cond_tok_class_sel = settings['data']['cond_tok_class_sel']
         self.cond_tok_time_sel = settings['data']['cond_tok_time_sel']
         self.cond_tok_separator = settings['data']['cond_tok_separator']
+        self.metadata = settings['lm']['config']['metadata']
 
-        if self.cond_tok_field_name is not None and 'logits' in self.cond_tok_field_name:
+        if self.cond_tok_field_name is not None and 'logits' in self.cond_tok_field_name and not self.metadata:
             self.class_map = class_names_from_csv()
+
+        print(data_dir)
+        if self.metadata:
+            self.metadata_keywords = load_pickle_file(data_dir.joinpath(f'{split}_keywords_dict_metadata.p'))
 
         self.tokenizer = tokenizer
 
@@ -69,7 +75,7 @@ class AACDatasetBART(torch.utils.data.Dataset):
 
         # ----- Conditioning inputs -----
         cond_text = None
-        if self.cond_tok_field_name is not None:
+        if self.cond_tok_field_name is not None and not self.metadata:
             if 'logits' in self.cond_tok_field_name:
                 cond_tok_logits = torch.Tensor(ex[self.cond_tok_field_name].item()).float()
                 # ----- Tag sampling -----
@@ -80,9 +86,12 @@ class AACDatasetBART(torch.utils.data.Dataset):
                     cond_tok_class = torch.argsort(cond_tok_logits, descending=True)[:int(self.cond_tok_time_sel[3:])]
                 else:  # Num tags = num logits
                     cond_tok_class = torch.multinomial(cond_tok_logits, 1)
-                len_cond_tok = cond_tok_logits.size(0)
+                    if self.cond_tok_time_sel == 'unroll' and in_e.size(0) == cond_tok_class.size(0) - 1:  # Some 9.5s files, vggish cuts whereas yamnet pads
+                        cond_tok_class = cond_tok_class[:in_e.size(0)]
+                len_cond_tok = cond_tok_class.size(0)
                 # ----- Reformat text inputs -----
                 cond_text = self.cond_tok_separator.join([self.class_map[int(ic)] for ic in cond_tok_class]) + '.'
+                # print(cond_text)
             cond_tokens = self.tokenizer(cond_text, max_length=64, return_tensors='pt',
                                          padding='max_length')  # Reduce to 128 on AudioCaps for speedup
             att_mask = cond_tokens['attention_mask'].squeeze()
@@ -90,6 +99,14 @@ class AACDatasetBART(torch.utils.data.Dataset):
         else:
             cond_tokens = None
             att_mask = None
+
+        if self.metadata:
+            cond_text = self.cond_tok_separator.join(self.metadata_keywords[ex['file_name'].item()]) + '.'
+            # print(cond_text)
+            cond_tokens = self.tokenizer(cond_text, max_length=64, return_tensors='pt',
+                                         padding='max_length')  # Reduce to 128 on AudioCaps for speedup
+            att_mask = cond_tokens['attention_mask'].squeeze()
+            cond_tokens = cond_tokens['input_ids'].squeeze().long()
 
         # ----- Reformat audio inputs -----
         if self.cond_tok_field_name is None:  # No token cond
